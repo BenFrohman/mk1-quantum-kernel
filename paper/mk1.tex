@@ -1,0 +1,72 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsthm,hyperref}
+\title{MK-1: an exactly simulated two-qubit ZZ-feature-map fidelity kernel,\\ with machine-checked kernel properties}
+\author{Benjamin Stanley Frohman}
+\date{November 3, 2026}
+\begin{document}
+\maketitle
+\begin{abstract}
+MK-1 is a small, self-contained implementation of a quantum fidelity kernel on two qubits:
+a ZZ-type feature map $U(x)$, the compute--uncompute estimator $K(x,x')=|\langle 00|U(x')^\dagger U(x)|00\rangle|^2$,
+and a visualisation of the kernel-SVM pipeline. The construction is not new; it follows Havl\'{\i}\v{c}ek et al.~\cite{havlicek} and Schuld--Killoran~\cite{schuld}.
+This note records exactly what the code computes, documents a defect in the original script (its ``entangling'' gate
+was a no-op, so the kernel factorised), and lists what is machine-checked in Lean~4 with Mathlib: for any unitary feature map,
+$K(x,x)=1$, symmetry, $0\le K\le 1$, compute--uncompute equals state fidelity, and positive semidefiniteness of the Gram matrix.
+No quantum advantage, hardware result or new learning-theoretic claim is made.
+\end{abstract}
+
+\section{The construction}
+Qubit 0 is the first tensor factor and the CNOT control. For $x=(x_0,x_1)\in\mathbb{R}^2$,
+\[
+U(x)=\mathrm{CNOT}\,(I\otimes R_Z(2x_0x_1))\,\mathrm{CNOT}\,(R_Z(2x_0)\otimes R_Z(2x_1))\,(H\otimes H),
+\qquad R_Z(\theta)=\mathrm{diag}(e^{-i\theta/2},e^{i\theta/2}).
+\]
+Since $\mathrm{CNOT}(I\otimes R_Z(\theta))\mathrm{CNOT}=e^{-i\theta Z\otimes Z/2}$, writing basis states by signs $s\in\{\pm1\}^2$,
+\[
+U(x)|00\rangle=\tfrac12\sum_{s} e^{-i\varphi(s,x)}|s\rangle,\qquad \varphi(s,x)=x_0s_0+x_1s_1+x_0x_1s_0s_1,
+\]
+so with $\Delta=x-x'$ and $\Delta_{01}=x_0x_1-x_0'x_1'$,
+\[
+K(x,x')=\Bigl|\tfrac14\sum_{s}e^{-i(\Delta_0s_0+\Delta_1s_1+\Delta_{01}s_0s_1)}\Bigr|^2 .
+\]
+This is one layer of the ZZ feature map of~\cite{havlicek} with the simplified pair coefficient $x_0x_1$
+(their map uses $(\pi-x_0)(\pi-x_1)$ and two layers). With one layer, and on two qubits, the kernel has the
+closed form above and is trivially classically computable; MK-1 is a teaching and testing artefact.
+
+\section{A defect in the original script}
+The original \texttt{mk1\_moving\_tower.py} (kept in \texttt{original/}) applied the middle $R_Z(2x_0x_1)$ to the \emph{control} qubit.
+A diagonal gate on the control commutes with CNOT, so the two CNOTs cancel and no $Z\otimes Z$ phase is produced; the kernel becomes the
+product $\cos^2(\Delta_0+\Delta_{01})\cos^2\Delta_1$. The package keeps this as \texttt{variant="legacy"} for reproducibility and uses
+the corrected map by default. Both facts ($\mathrm{CNOT}(D\otimes I)\mathrm{CNOT}=D\otimes I$ and the $Z\otimes Z$ phase for a target gate)
+are proved in Lean (\texttt{cnot\_onControl\_cnot}, \texttt{cnot\_onTarget\_cnot}).
+
+\section{What is machine-checked}
+\texttt{lean/MK1/FidelityKernel.lean} defines $K_\psi(x,y)=|\langle\psi(y),\psi(x)\rangle|^2$ for any family $\psi$ in a complex inner product space and proves:
+\begin{itemize}
+\item \texttt{fidelity\_self}, \texttt{fidelity\_symm}, \texttt{fidelity\_nonneg}, \texttt{fidelity\_le\_one}: $K(x,x)=1$ for unit states, symmetry, $0\le K\le1$ (Cauchy--Schwarz);
+\item \texttt{norm\_featureState}, \texttt{computeUncompute\_eq\_fidelity}: states $U(x)v$ from unitaries (linear isometry equivalences) are unit vectors, and $|\langle v,U(y)^{-1}U(x)v\rangle|^2=K(x,y)$;
+\item \texttt{fidelity\_gram\_posSemidef}: for states in $\mathbb{C}^n$ and finitely many points, the matrix $[K(x_j,x_i)]$ is positive semidefinite,
+via $|\langle a,b\rangle|^2=\langle a\otimes\bar a,b\otimes\bar b\rangle$ and Mathlib's Gram-matrix theorem.
+\end{itemize}
+All are \texttt{sorry}-free; \texttt{AxiomAudit.lean} shows only \texttt{propext}, \texttt{Classical.choice}, \texttt{Quot.sound}; CI rebuilds and audits on every push.
+These are standard facts; the Lean development checks them, it does not establish anything new.
+The Lean code does not model the specific gate angles beyond the CNOT identities; the agreement of the numerical circuit with the closed form is checked by the Python tests.
+
+\section{What is tested numerically}
+The Python tests (CI, every push) check for both variants: unitarity of $U(x)$; $K(x,x)=1$; symmetry; $0\le K\le1$;
+compute--uncompute equals $|\langle\psi(x')|\psi(x)\rangle|^2$; agreement with the matrix-free closed form to $10^{-12}$;
+Gram matrices symmetric with minimum eigenvalue $>-10^{-10}$; and the two CNOT identities.
+
+\section{Limitations}
+Exact statevector simulation, no shot noise or hardware; two qubits; no SVM is trained in the package (the DUAL/DECIDE stages are illustrative);
+no claim of quantum advantage. For the limits of such kernels see~\cite{kubler}.
+
+\begin{thebibliography}{9}
+\bibitem{havlicek} V.~Havl\'{\i}\v{c}ek, A.~D.~C\'orcoles, K.~Temme, A.~W.~Harrow, A.~Kandala, J.~M.~Chow, J.~M.~Gambetta,
+Supervised learning with quantum-enhanced feature spaces, \emph{Nature} 567 (2019) 209--212, doi:10.1038/s41586-019-0980-2.
+\bibitem{schuld} M.~Schuld, N.~Killoran, Quantum machine learning in feature Hilbert spaces, \emph{Phys.\ Rev.\ Lett.} 122 (2019) 040504.
+\bibitem{kubler} J.~M.~K\"ubler, S.~Buchholz, B.~Sch\"olkopf, The inductive bias of quantum kernels, \emph{NeurIPS} 34 (2021).
+\end{thebibliography}
+Code: \url{https://github.com/BenFrohman/mk1-quantum-kernel}. License: Apache-2.0 (code), CC BY 4.0 (this note).
+\end{document}

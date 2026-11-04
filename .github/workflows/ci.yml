@@ -1,0 +1,41 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[test]"
+      - run: pytest -q
+      - run: python -m mk1 --out /tmp/mk1
+  lean:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: lean
+    steps:
+      - uses: actions/checkout@v4
+      - uses: leanprover/lean-action@v1
+        with:
+          lake-package-directory: lean
+          use-mathlib-cache: true
+      - name: No sorry/admit/axiom in sources
+        run: "! grep -rnE '^\\s*(sorry|admit)\\b|:= *by *sorry|\\bsorry\\s*$|^axiom ' MK1 MK1.lean"
+      - name: Axiom audit (standard axioms only)
+        run: |
+          lake env lean AxiomAudit.lean | tee audit.txt
+          python3 - <<'PY'
+          import re
+          t = open("audit.txt").read()
+          names = re.findall(r"axioms: \[([^\]]*)\]", t, re.S)
+          bad = set(re.findall(r"[A-Za-z_][\w.]*", " ".join(names))) - {"propext", "Classical.choice", "Quot.sound"}
+          assert len(re.findall("depends on axioms", t)) == 10 and "error" not in t.lower() and not bad, (bad, t)
+          print("audit ok")
+          PY

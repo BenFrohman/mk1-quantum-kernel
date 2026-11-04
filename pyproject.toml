@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mk1-quantum-kernel"
+version = "0.1.0"
+description = "Exact simulation of a 2-qubit ZZ-feature-map fidelity kernel (compute-uncompute), with a pipeline GIF"
+readme = "README.md"
+license = "Apache-2.0"
+authors = [{ name = "Benjamin Stanley Frohman", email = "frohmanbenjamin@gmail.com" }]
+requires-python = ">=3.9"
+dependencies = ["numpy", "pillow"]
+
+[project.optional-dependencies]
+test = ["pytest"]
+
+[project.scripts]
+mk1 = "mk1.tower:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
