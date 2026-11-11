@@ -47,3 +47,7 @@ and the Gram matrix is positive semidefinite; plus the two CNOT identities above
 ## License
 
 Apache-2.0. Copyright 2026 Benjamin Stanley Frohman (see [NOTICE](NOTICE)). The paper text is CC BY 4.0.
+
+## Citation
+
+Cite this work with [`CITATION.cff`](CITATION.cff) (GitHub's "Cite this repository" button).

@@ -1,0 +1,15 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it using the metadata below."
+type: software
+title: "MK-1 quantum kernel: exact 2-qubit ZZ-feature-map fidelity kernel"
+authors:
+  - family-names: "Frohman"
+    given-names: "Benjamin Stanley"
+    alias: "B.S. Frohman"
+    orcid: "https://orcid.org/0009-0006-7068-3718"
+    email: "frohmanbenjamin@gmail.com"
+    affiliation: "Independent Researcher, Texas, United States"
+version: "0.1.0"
+repository-code: "https://github.com/BenFrohman/mk1-quantum-kernel"
+license: Apache-2.0
+abstract: "Exact statevector simulation of a 2-qubit ZZ-feature-map fidelity kernel estimated by compute-uncompute, with tests, a Lean 4 check of basic kernel properties, and a short technical note. No claim of quantum advantage."
