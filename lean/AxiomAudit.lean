@@ -1,4 +1,17 @@
+/-
+Copyright (c) 2026 Benjamin Stanley Frohman. All rights reserved.
+Released under Apache 2.0 license as described in the file LICENSE.
+Authors: Benjamin Stanley Frohman
+-/
+
 import MK1
+
+/-!
+# lean.AxiomAudit
+
+Machine-checked Lean 4 module.
+-/
+
 #print axioms MK1.fidelity_symm
 #print axioms MK1.fidelity_nonneg
 #print axioms MK1.fidelity_self
