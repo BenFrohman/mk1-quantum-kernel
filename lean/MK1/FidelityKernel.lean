@@ -1,11 +1,15 @@
 /-
-Copyright (c) 2026 Benjamin Stanley Frohman. Released under Apache 2.0 license as described in
-the file LICENSE.
+Copyright (c) 2026 Benjamin Stanley Frohman. All rights reserved.
+Released under Apache 2.0 license as described in the file LICENSE.
 Authors: Benjamin Stanley Frohman
 -/
+
 import Mathlib
 
 /-!
+# lean.MK1.FidelityKernel
+
+the file LICENSE.
 # Fidelity kernels from unitary feature maps
 
 MK-1 estimates the quantum kernel `K(x, x') = |⟨ψ(x') | ψ(x)⟩|²` where `ψ(x) = U(x) |0⟩` and
