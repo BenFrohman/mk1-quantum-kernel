@@ -1,0 +1,91 @@
+name: Kernel certificate
+
+# Rebuilds the development with its pinned toolchain, scans for sorry/admit/native_decide/axiom,
+# runs collectAxioms (#print axioms) on every theorem the build produces, re-checks every module
+# with Lean's external kernel checker (leanchecker / lean4checker), and uploads the raw logs.
+# The committed copies of these files live in lean/certificates/ (see lean/certificates/CERTIFICATE.md).
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  kernel-certificate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    defaults:
+      run:
+        working-directory: lean
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install elan (toolchain from lean-toolchain)
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh | sh -s -- -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+      - name: Toolchain and revision
+        run: |
+          mkdir -p cert-out
+          {
+            echo "commit: $(git rev-parse HEAD)"
+            echo "lean-toolchain: $(cat lean-toolchain)"
+            echo "lean --version: $(lean --version)"
+            echo "lake --version: $(lake --version)"
+            echo "date (UTC): $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          } | tee cert-out/environment.txt
+      - name: Get Mathlib cache (never rebuilds Mathlib from source)
+        run: |
+          if grep -q '"name": *"mathlib"' lake-manifest.json 2>/dev/null; then lake exe cache get; else echo "no mathlib dependency"; fi
+      - name: lake build
+        run: |
+          set -o pipefail
+          lake build 2>&1 | tee cert-out/build.log
+      - name: sorry / admit / native_decide / axiom scan
+        run: |
+          set -o pipefail
+          python3 certificates/tools/sorry_scan.py 2>&1 | tee cert-out/sorry-scan.txt
+      - name: '#print axioms (collectAxioms) for every theorem in the built modules'
+        run: |
+          set -o pipefail
+          python3 certificates/tools/gen_audit.py cert-out/KernelCertificateAudit.lean cert-out/modules.txt
+          lake env lean cert-out/KernelCertificateAudit.lean > cert-out/axioms.raw.txt 2>&1 || { cat cert-out/axioms.raw.txt; exit 1; }
+          python3 certificates/tools/check_audit.py cert-out/axioms.raw.txt > cert-out/axioms.txt || { tail -50 cert-out/axioms.txt; exit 1; }
+          tail -1 cert-out/axioms.txt
+      - name: External kernel re-check of every module (leanchecker / lean4checker, one module per run)
+        # The stock checker treats its argument as a module-name prefix and replays every matching
+        # module in parallel, which runs out of memory on a root module that imports the whole
+        # library. We therefore run the checker's own source with the single change
+        # `target.isPrefixOf m` -> `target == m`, once per module, sequentially.
+        run: |
+          set -o pipefail
+          LEANBIN="$(dirname "$(elan which lean)")"
+          PREFIX="$(dirname "$LEANBIN")"
+          VER="$(sed 's/.*://' lean-toolchain | tr -d '[:space:]')"
+          if [ -f "$PREFIX/src/lean/LeanChecker.lean" ]; then
+            sed 's/target\.isPrefixOf m/target == m/' "$PREFIX/src/lean/LeanChecker.lean" > /tmp/LeanCheckerExact.lean
+            echo "checker: leanchecker source shipped with $VER (src/lean/LeanChecker.lean), prefix match -> exact match, run with lean --run" > cert-out/leanchecker.txt
+            diff "$PREFIX/src/lean/LeanChecker.lean" /tmp/LeanCheckerExact.lean | sed 's/^/  patch: /' >> cert-out/leanchecker.txt || true
+            check() { lake env lean --run /tmp/LeanCheckerExact.lean -v "$1"; }
+          elif git ls-remote --exit-code --tags https://github.com/leanprover/lean4checker "refs/tags/$VER" >/dev/null; then
+            git clone -q --depth 1 --branch "$VER" https://github.com/leanprover/lean4checker /tmp/lean4checker
+            cp /tmp/lean4checker/Main.lean /tmp/Main.orig.lean
+            sed -i 's/target\.isPrefixOf m/target == m/' /tmp/lean4checker/Main.lean
+            (cd /tmp/lean4checker && lake build lean4checker)
+            echo "checker: lean4checker tag $VER ($(git -C /tmp/lean4checker rev-parse HEAD)), Main.lean prefix match -> exact match" > cert-out/leanchecker.txt
+            diff /tmp/Main.orig.lean /tmp/lean4checker/Main.lean | sed 's/^/  patch: /' >> cert-out/leanchecker.txt || true
+            check() { lake env /tmp/lean4checker/.lake/build/bin/lean4checker -v "$1"; }
+          else
+            echo "NOT RUN: toolchain $VER ships no leanchecker and lean4checker has no tag $VER" | tee cert-out/leanchecker.txt; exit 0
+          fi
+          while read -r m; do
+            [ -n "$m" ] || continue
+            if out=$(check "$m" 2>&1); then echo "$m: OK ($(echo "$out" | grep -c '^replaying') module replayed)"; else echo "$m: FAILED"; echo "$out" | tail -20; fi
+          done < cert-out/modules.txt | tee -a cert-out/leanchecker.txt
+          if grep -q ': FAILED$' cert-out/leanchecker.txt; then exit 1; fi
+          echo "RESULT: $(grep -c ': OK (' cert-out/leanchecker.txt) of $(grep -c . cert-out/modules.txt) modules replayed through the kernel, 0 failures" | tee -a cert-out/leanchecker.txt
+      - name: Upload certificate files
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kernel-certificate
+          path: lean/cert-out/
